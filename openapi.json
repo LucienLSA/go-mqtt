@@ -1,0 +1,287 @@
+﻿{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "go-mqtt API",
+    "version": "1.1.0",
+    "description": "与当前代码实现对齐的接口文档。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080"
+    }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Device" },
+    { "name": "EMQX" }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "健康检查",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PingEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device": {
+      "get": {
+        "tags": ["Device"],
+        "summary": "设备列表",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceListEnvelope" } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Device"],
+        "summary": "创建设备",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateDeviceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/device/{id}": {
+      "get": {
+        "tags": ["Device"],
+        "summary": "设备详情",
+        "parameters": [{ "$ref": "#/components/parameters/DeviceId" }],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceEnvelope" } } }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Device"],
+        "summary": "更新设备",
+        "parameters": [{ "$ref": "#/components/parameters/DeviceId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateDeviceRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceEnvelope" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Device"],
+        "summary": "删除设备",
+        "parameters": [{ "$ref": "#/components/parameters/DeviceId" }],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BaseEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/device/{id}/control": {
+      "post": {
+        "tags": ["Device"],
+        "summary": "下发控制",
+        "parameters": [{ "$ref": "#/components/parameters/DeviceId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ControlRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ControlEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/device/{id}/command": {
+      "get": {
+        "tags": ["Device"],
+        "summary": "命令历史",
+        "parameters": [
+          { "$ref": "#/components/parameters/DeviceId" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandListEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/emqx/auth": {
+      "post": {
+        "tags": ["EMQX"],
+        "summary": "EMQX HTTP认证",
+        "responses": {
+          "200": {
+            "description": "allow or deny",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EMQXAuthResponse" } } }
+          }
+        }
+      }
+    },
+    "/emqx/webhook": {
+      "post": {
+        "tags": ["EMQX"],
+        "summary": "EMQX webhook",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BaseEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/emqx/auth": {
+      "post": {
+        "tags": ["EMQX"],
+        "summary": "EMQX HTTP认证(别名)",
+        "responses": {
+          "200": {
+            "description": "allow or deny",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EMQXAuthResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/emqx/webhook": {
+      "post": {
+        "tags": ["EMQX"],
+        "summary": "EMQX webhook(别名)",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BaseEnvelope" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "DeviceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" }
+      }
+    },
+    "schemas": {
+      "BaseEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": {}
+        },
+        "required": ["code", "message", "data"]
+      },
+      "PingEnvelope": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BaseEnvelope" }
+        ]
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "device_id": { "type": "string" },
+          "name": { "type": "string" },
+          "group_id": { "type": "integer" },
+          "status": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CommandLog": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "device_id": { "type": "string" },
+          "trace_id": { "type": "string" },
+          "command": { "type": "string" },
+          "result": { "type": "string" },
+          "status": { "type": "integer" },
+          "message": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateDeviceRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "group_id": { "type": "integer" }
+        }
+      },
+      "UpdateDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "group_id": { "type": "integer" }
+        }
+      },
+      "ControlRequest": {
+        "type": "object",
+        "required": ["cmd"],
+        "properties": {
+          "cmd": { "type": "string" },
+          "param": {}
+        }
+      },
+      "DeviceEnvelope": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BaseEnvelope" }
+        ]
+      },
+      "DeviceListEnvelope": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BaseEnvelope" }
+        ]
+      },
+      "ControlEnvelope": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BaseEnvelope" }
+        ]
+      },
+      "CommandListEnvelope": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BaseEnvelope" }
+        ]
+      },
+      "EMQXAuthResponse": {
+        "type": "object",
+        "properties": {
+          "result": { "type": "string", "enum": ["allow", "deny"] },
+          "is_superuser": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
