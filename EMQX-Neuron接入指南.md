@@ -25,10 +25,8 @@
 
 你项目里已提供 EMQX 鉴权与 WebHook：
 
-1. POST /emqx/auth
-2. POST /emqx/webhook
-3. POST /api/v1/emqx/auth
-4. POST /api/v1/emqx/webhook
+1. POST /api/v1/emqx/auth
+2. POST /api/v1/emqx/webhook
 
 新增支持：
 
@@ -63,7 +61,7 @@ curl -X GET "http://localhost:8080/ping"
 在 EMQX Dashboard 中创建 HTTP 认证器（MQTT）：
 
 1. Method: POST
-2. URL: http://<你的服务IP>:8080/emqx/auth
+2. URL: http://<你的服务IP>:8080/api/v1/emqx/auth
 3. Body(JSON):
 
 ```json
@@ -86,7 +84,7 @@ curl -X GET "http://localhost:8080/ping"
 
 创建 WebHook（或 Rule + HTTP Action）发送连接事件到：
 
-- http://<你的服务IP>:8080/emqx/webhook
+- http://<你的服务IP>:8080/api/v1/emqx/webhook
 
 建议发送字段：
 

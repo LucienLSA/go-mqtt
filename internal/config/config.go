@@ -23,6 +23,7 @@ func InitDB() {
 		&model.Device{},
 		&model.SensorData{},
 		&model.CommandLog{},
+		&model.AuthUser{},
 	)
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)

@@ -34,13 +34,20 @@ type SensorData struct {
 
 // 运行日志
 type CommandLog struct {
-	ID         uint           `gorm:"primarykey" json:"id"`
-	DeviceID   string         `gorm:"size:64;index;not null" json:"device_id"`
-	TraceID    string         `gorm:"size:64;index;not null" json:"trace_id"`
-	Command    string         `gorm:"size:256" json:"command"`
-	Result     string         `gorm:"size:256" json:"result"`
-	Status     int            `gorm:"default:1" json:"status"`
-	Message    string         `gorm:"size:512" json:"message"`
-	CreatedAt  time.Time      `json:"created_at"`
-	DealetedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	ID          uint           `gorm:"primarykey" json:"id"`
+	DeviceID    string         `gorm:"size:64;index;not null" json:"device_id"`
+	TraceID     string         `gorm:"size:64;index;not null" json:"trace_id"`
+	Topic       string         `gorm:"size:128" json:"topic"`
+	Payload     string         `gorm:"type:text" json:"payload"`
+	Command     string         `gorm:"size:256" json:"command"`
+	Result      string         `gorm:"size:256" json:"result"`
+	Status      int            `gorm:"default:1" json:"status"`
+	RetryCount  int            `gorm:"default:0" json:"retry_count"`
+	MaxRetry    int            `gorm:"default:2" json:"max_retry"`
+	TimeoutAt   int64          `gorm:"index" json:"timeout_at"`
+	NextRetryAt int64          `gorm:"index" json:"next_retry_at"`
+	DoneAt      int64          `gorm:"default:0" json:"done_at"`
+	Message     string         `gorm:"size:512" json:"message"`
+	CreatedAt   time.Time      `json:"created_at"`
+	DealetedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }

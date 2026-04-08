@@ -3,6 +3,7 @@ package main
 import (
 	"go-mqtt/internal/config"
 	"go-mqtt/internal/handler"
+	"go-mqtt/internal/middleware"
 	"go-mqtt/internal/mqtt"
 	"log"
 
@@ -39,24 +40,34 @@ func main() {
 	// 设备handler
 	deviceHandler := handler.NewDeviceHandler()
 	emqxHandler := handler.NewEMQXHandler()
-
-	// EMQX回调接口（可直接配置给EMQX）
-	r.POST("/emqx/auth", emqxHandler.Auth)
-	r.POST("/emqx/webhook", emqxHandler.Webhook)
+	authHandler := handler.NewAuthHandler()
 
 	api := r.Group("/api/v1")
 	{
-		device := api.Group("/device")
+		authGroup := api.Group("/auth")
 		{
-			device.POST("", deviceHandler.CreateDevice)
-			device.GET("", deviceHandler.GetDeviceList)
-			device.GET("/:id", deviceHandler.GetDevice)
-			device.PUT("/:id", deviceHandler.UpdateDevice)
-			device.DELETE("/:id", deviceHandler.DeleteDevice)
-			device.POST("/:id/control", deviceHandler.ControlDevice)
-			device.GET("/:id/command", deviceHandler.GetCommandHistory)
+			authGroup.POST("/login", authHandler.Login)
 		}
 
+		secured := api.Group("")
+		secured.Use(middleware.JWTAuth())
+		{
+			secured.GET("/auth/me", authHandler.Me)
+		}
+
+		device := api.Group("/device")
+		device.Use(middleware.JWTAuth())
+		{
+			device.GET("", middleware.RequireRoles("admin", "operator", "viewer"), deviceHandler.GetDeviceList)
+			device.GET("/:id", middleware.RequireRoles("admin", "operator", "viewer"), deviceHandler.GetDevice)
+			device.GET("/:id/command", middleware.RequireRoles("admin", "operator", "viewer"), deviceHandler.GetCommandHistory)
+
+			device.POST("", middleware.RequireRoles("admin"), deviceHandler.CreateDevice)
+			device.PUT("/:id", middleware.RequireRoles("admin"), deviceHandler.UpdateDevice)
+			device.DELETE("/:id", middleware.RequireRoles("admin"), deviceHandler.DeleteDevice)
+			device.POST("/:id/control", middleware.RequireRoles("admin", "operator"), deviceHandler.ControlDevice)
+		}
+		// EMQX业务接口
 		emqx := api.Group("/emqx")
 		{
 			emqx.POST("/auth", emqxHandler.Auth)

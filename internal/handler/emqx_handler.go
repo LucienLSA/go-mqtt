@@ -1,10 +1,17 @@
 package handler
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"go-mqtt/internal/repository"
+	"io"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -31,6 +38,11 @@ type emqxWebhookRequest struct {
 	Username string `json:"username"`
 	ClientID string `json:"clientid"`
 }
+
+const (
+	coreEventClientConnected    = "client.connected"
+	coreEventClientDisconnected = "client.disconnected"
+)
 
 // Auth 提供给EMQX HTTP认证使用
 func (h *EMQXHandler) Auth(c *gin.Context) {
@@ -80,8 +92,24 @@ func allowNeuronGateway(username, password string) bool {
 
 // Webhook 处理EMQX上下线事件并回写设备状态
 func (h *EMQXHandler) Webhook(c *gin.Context) {
+	if !isWebhookIPAllowed(c.ClientIP()) {
+		c.JSON(http.StatusForbidden, gin.H{"code": http.StatusForbidden, "message": "forbidden source ip", "data": nil})
+		return
+	}
+
+	rawBody, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "message": "read request body failed", "data": nil})
+		return
+	}
+
+	if !verifyWebhookSignature(c.GetHeader(getWebhookSignHeaderName()), rawBody) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": http.StatusUnauthorized, "message": "invalid webhook signature", "data": nil})
+		return
+	}
+
 	var req emqxWebhookRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "message": "invalid webhook payload", "data": nil})
 		return
 	}
@@ -93,7 +121,15 @@ func (h *EMQXHandler) Webhook(c *gin.Context) {
 
 	status, ok := parseOnlineStatus(req.Event, req.Action)
 	if !ok {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ignored event", "data": nil})
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "ignored event",
+			"data": gin.H{
+				"supported_events": []string{coreEventClientConnected, coreEventClientDisconnected},
+				"event":            req.Event,
+				"action":           req.Action,
+			},
+		})
 		return
 	}
 
@@ -107,9 +143,9 @@ func (h *EMQXHandler) Webhook(c *gin.Context) {
 
 func parseOnlineStatus(event, action string) (int, bool) {
 	switch event {
-	case "client.connected":
+	case coreEventClientConnected:
 		return 1, true
-	case "client.disconnected":
+	case coreEventClientDisconnected:
 		return 0, true
 	}
 
@@ -121,4 +157,78 @@ func parseOnlineStatus(event, action string) (int, bool) {
 	}
 
 	return 0, false
+}
+
+func getWebhookSignHeaderName() string {
+	v := strings.TrimSpace(os.Getenv("EMQX_WEBHOOK_SIGN_HEADER"))
+	if v == "" {
+		return "X-EMQX-Signature"
+	}
+	return v
+}
+
+func isWebhookIPAllowed(clientIP string) bool {
+	raw := strings.TrimSpace(os.Getenv("EMQX_WEBHOOK_IP_WHITELIST"))
+	if raw == "" {
+		return true
+	}
+
+	ip := net.ParseIP(strings.TrimSpace(clientIP))
+	if ip == nil {
+		return false
+	}
+
+	items := strings.Split(raw, ",")
+	for _, item := range items {
+		entry := strings.TrimSpace(item)
+		if entry == "" {
+			continue
+		}
+
+		if strings.Contains(entry, "/") {
+			_, cidr, err := net.ParseCIDR(entry)
+			if err == nil && cidr.Contains(ip) {
+				return true
+			}
+			continue
+		}
+
+		allowIP := net.ParseIP(entry)
+		if allowIP != nil && allowIP.Equal(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func verifyWebhookSignature(signatureHeader string, body []byte) bool {
+	secret := strings.TrimSpace(os.Getenv("EMQX_WEBHOOK_HMAC_SECRET"))
+	if secret == "" {
+		return true
+	}
+
+	got, ok := parseSignatureHeader(signatureHeader)
+	if !ok {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	expected := mac.Sum(nil)
+
+	return hmac.Equal(got, expected)
+}
+
+func parseSignatureHeader(signatureHeader string) ([]byte, bool) {
+	v := strings.TrimSpace(signatureHeader)
+	if v == "" {
+		return nil, false
+	}
+	v = strings.TrimPrefix(strings.ToLower(v), "sha256=")
+	b, err := hex.DecodeString(v)
+	if err != nil || len(b) == 0 {
+		return nil, false
+	}
+	return b, true
 }

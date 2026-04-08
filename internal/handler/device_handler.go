@@ -8,7 +8,9 @@ import (
 	"go-mqtt/internal/response"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -174,11 +176,16 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 	}
 
 	traceID := generateTraceID()
+	topic := "device/" + device.DeviceID + "/control"
+	ackTimeout := envInt("CMD_ACK_TIMEOUT_SEC", 15)
+	maxRetry := envInt("CMD_MAX_RETRY", 2)
+	now := time.Now().Unix()
+	timeoutAt := now + int64(ackTimeout)
 	payload := gin.H{
 		"cmd":      req.Cmd,
 		"param":    req.Param,
 		"trace_id": traceID,
-		"ts":       time.Now().Unix(),
+		"ts":       now,
 	}
 
 	body, err := json.Marshal(payload)
@@ -188,12 +195,18 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 	}
 
 	cmdLog := &model.CommandLog{
-		DeviceID: device.DeviceID,
-		TraceID:  traceID,
-		Command:  req.Cmd,
-		Result:   "pending",
-		Status:   0,
-		Message:  "issued",
+		DeviceID:    device.DeviceID,
+		TraceID:     traceID,
+		Topic:       topic,
+		Payload:     string(body),
+		Command:     req.Cmd,
+		Result:      "pending",
+		Status:      0,
+		RetryCount:  0,
+		MaxRetry:    maxRetry,
+		TimeoutAt:   timeoutAt,
+		NextRetryAt: timeoutAt,
+		Message:     "issued",
 	}
 	if err := h.CmdRepo.Create(cmdLog); err != nil {
 		response.Fail(c, http.StatusInternalServerError, "命令日志写入失败")
@@ -211,9 +224,11 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{
-		"device_id": device.DeviceID,
-		"trace_id":  traceID,
-		"topic":     "device/" + device.DeviceID + "/control",
+		"device_id":  device.DeviceID,
+		"trace_id":   traceID,
+		"topic":      topic,
+		"timeout_at": timeoutAt,
+		"max_retry":  maxRetry,
 	})
 }
 
@@ -242,4 +257,16 @@ func (h *DeviceHandler) GetCommandHistory(c *gin.Context) {
 
 func generateTraceID() string {
 	return "ctrl-" + time.Now().Format("20060102150405") + "-" + strconv.Itoa(rand.Intn(1000000))
+}
+
+func envInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return fallback
+	}
+	return n
 }

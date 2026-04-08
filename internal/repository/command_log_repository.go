@@ -3,6 +3,7 @@ package repository
 import (
 	"go-mqtt/internal/config"
 	"go-mqtt/internal/model"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -23,11 +24,12 @@ func (r *CommandLogRepository) Create(log *model.CommandLog) error {
 
 func (r *CommandLogRepository) UpdateByTraceID(traceID, result, message string, status int) error {
 	return r.DB.Model(&model.CommandLog{}).
-		Where("trace_id = ?", traceID).
+		Where("trace_id = ? AND status = 0", traceID).
 		Updates(map[string]any{
 			"result":  result,
 			"message": message,
 			"status":  status,
+			"done_at": time.Now().Unix(),
 		}).Error
 }
 
@@ -41,4 +43,40 @@ func (r *CommandLogRepository) ListByDeviceID(deviceID string, limit int) ([]mod
 		Limit(limit).
 		Find(&logs).Error
 	return logs, err
+}
+
+func (r *CommandLogRepository) ListPendingForRetry(now int64, limit int) ([]model.CommandLog, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var logs []model.CommandLog
+	err := r.DB.Where("status = 0 AND next_retry_at > 0 AND next_retry_at <= ?", now).
+		Order("id ASC").
+		Limit(limit).
+		Find(&logs).Error
+	return logs, err
+}
+
+func (r *CommandLogRepository) UpdateRetryPlan(traceID string, retryCount int, timeoutAt int64, nextRetryAt int64, message string) error {
+	return r.DB.Model(&model.CommandLog{}).
+		Where("trace_id = ? AND status = 0", traceID).
+		Updates(map[string]any{
+			"retry_count":   retryCount,
+			"timeout_at":    timeoutAt,
+			"next_retry_at": nextRetryAt,
+			"result":        "retrying",
+			"message":       message,
+		}).Error
+}
+
+func (r *CommandLogRepository) MarkTimeout(traceID, message string) error {
+	return r.DB.Model(&model.CommandLog{}).
+		Where("trace_id = ? AND status = 0", traceID).
+		Updates(map[string]any{
+			"status":        2,
+			"result":        "timeout",
+			"message":       message,
+			"done_at":       time.Now().Unix(),
+			"next_retry_at": 0,
+		}).Error
 }

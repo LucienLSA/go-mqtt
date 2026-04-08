@@ -80,6 +80,7 @@ func (s *Subscriber) Start() error {
 		return token.Error()
 	}
 	log.Printf("MQTT连接成功 broker=%s", broker)
+	s.startCommandRetryWorker()
 	return nil
 }
 
@@ -180,6 +181,81 @@ func (s *Subscriber) handleFeedbackMessage(_ mqtt.Client, msg mqtt.Message) {
 	log.Printf("命令回执更新成功 trace_id=%s result=%s", payload.TraceID, payload.Result)
 }
 
+func (s *Subscriber) startCommandRetryWorker() {
+	scanInterval := envInt("CMD_SCAN_INTERVAL_SEC", 2)
+	ackTimeout := envInt("CMD_ACK_TIMEOUT_SEC", 15)
+	retryInterval := envInt("CMD_RETRY_INTERVAL_SEC", 5)
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(scanInterval) * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			s.processPendingCommands(ackTimeout, retryInterval)
+		}
+	}()
+}
+
+func (s *Subscriber) processPendingCommands(ackTimeout, retryInterval int) {
+	now := time.Now().Unix()
+	logs, err := s.cmdRepo.ListPendingForRetry(now, 200)
+	if err != nil {
+		log.Printf("命令重试扫描失败 err=%v", err)
+		return
+	}
+
+	for _, cmd := range logs {
+		if cmd.RetryCount >= cmd.MaxRetry {
+			_ = s.cmdRepo.MarkTimeout(cmd.TraceID, "ack timeout exceeded max retries")
+			log.Printf("命令超时 trace_id=%s retry=%d/%d", cmd.TraceID, cmd.RetryCount, cmd.MaxRetry)
+			continue
+		}
+
+		nextRetryCount := cmd.RetryCount + 1
+		topic := cmd.Topic
+		if topic == "" {
+			topic = fmt.Sprintf("device/%s/control", cmd.DeviceID)
+		}
+
+		publishErr := s.publishRaw(topic, []byte(cmd.Payload))
+		nextAt := now + int64(retryInterval)
+		timeoutAt := now + int64(ackTimeout)
+		msg := fmt.Sprintf("retry %d/%d sent", nextRetryCount, cmd.MaxRetry)
+		if publishErr != nil {
+			msg = fmt.Sprintf("retry %d/%d publish failed: %v", nextRetryCount, cmd.MaxRetry, publishErr)
+		}
+
+		if err := s.cmdRepo.UpdateRetryPlan(cmd.TraceID, nextRetryCount, timeoutAt, nextAt, msg); err != nil {
+			log.Printf("更新命令重试计划失败 trace_id=%s err=%v", cmd.TraceID, err)
+			continue
+		}
+
+		if publishErr != nil {
+			log.Printf("命令重发失败 trace_id=%s err=%v", cmd.TraceID, publishErr)
+			continue
+		}
+		log.Printf("命令重发成功 trace_id=%s retry=%d/%d", cmd.TraceID, nextRetryCount, cmd.MaxRetry)
+	}
+}
+
+func (s *Subscriber) publishRaw(topic string, payload []byte) error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("mqtt client is not initialized")
+	}
+	if !s.client.IsConnected() {
+		return fmt.Errorf("mqtt client is disconnected")
+	}
+	qos := byte(0)
+	if v, err := strconv.Atoi(getEnv("MQTT_QOS", "0")); err == nil && v >= 0 && v <= 2 {
+		qos = byte(v)
+	}
+	token := s.client.Publish(topic, qos, false, payload)
+	if token.Wait() && token.Error() != nil {
+		return token.Error()
+	}
+	return nil
+}
+
 func parseDeviceID(topic string) (string, bool) {
 	parts := strings.Split(topic, "/")
 	if len(parts) != 3 {
@@ -263,4 +339,16 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func envInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }
