@@ -55,7 +55,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// bootstrapUsers 从环境变量加载初始用户并创建（如果不存在）
 func (h *AuthHandler) bootstrapUsers() {
+	// 从环境变量加载用户列表
 	seed := auth.LoadUsersFromEnv()
 	for _, item := range seed {
 		_, err := h.Repo.GetByUsername(item.Username)
@@ -66,7 +68,7 @@ func (h *AuthHandler) bootstrapUsers() {
 			log.Printf("query auth user failed username=%s err=%v", item.Username, err)
 			continue
 		}
-
+		// 用户不存在，创建新用户
 		hash, hashErr := auth.HashPassword(item.Password)
 		if hashErr != nil {
 			log.Printf("hash auth user password failed username=%s err=%v", item.Username, hashErr)

@@ -158,7 +158,7 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "无效的ID")
 		return
 	}
-
+	// 获取设备ID
 	device, err := h.Repo.GetByID(uint(id))
 	if err != nil {
 		response.Fail(c, http.StatusNotFound, "设备不存在")
@@ -174,8 +174,9 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
+	// 生成trace_id
 	traceID := generateTraceID()
+	// 生成下发命令主题
 	topic := "device/" + device.DeviceID + "/control"
 	ackTimeout := envInt("CMD_ACK_TIMEOUT_SEC", 15)
 	maxRetry := envInt("CMD_MAX_RETRY", 2)
@@ -208,17 +209,18 @@ func (h *DeviceHandler) ControlDevice(c *gin.Context) {
 		NextRetryAt: timeoutAt,
 		Message:     "issued",
 	}
+	// 控制命令下发日志写入
 	if err := h.CmdRepo.Create(cmdLog); err != nil {
 		response.Fail(c, http.StatusInternalServerError, "命令日志写入失败")
 		return
 	}
-
+	// 初始化MQTT订阅器
 	sub := mqtt.DefaultSubscriber()
 	if sub == nil {
 		response.Fail(c, http.StatusServiceUnavailable, "MQTT订阅器未初始化")
 		return
 	}
-
+	// MQTT下发控制命令
 	if err := sub.PublishControl(device.DeviceID, body); err != nil {
 		response.Fail(c, http.StatusInternalServerError, "MQTT下发失败")
 		return

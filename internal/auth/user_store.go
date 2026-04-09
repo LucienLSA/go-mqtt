@@ -12,7 +12,7 @@ type User struct {
 }
 
 // LoadUsersFromEnv reads AUTH_USERS in format:
-// admin:admin123:admin,ops:ops123:operator,viewer:viewer123:viewer
+// 获取环境变量AUTH_USERS，格式为：username:password:role,username:password:role
 func LoadUsersFromEnv() []User {
 	users := make([]User, 0, 4)
 	raw := strings.TrimSpace(os.Getenv("AUTH_USERS"))
