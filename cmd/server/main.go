@@ -65,7 +65,7 @@ func main() {
 			device.POST("", middleware.RequireRoles("admin"), deviceHandler.CreateDevice)
 			device.PUT("/:id", middleware.RequireRoles("admin"), deviceHandler.UpdateDevice)
 			device.DELETE("/:id", middleware.RequireRoles("admin"), deviceHandler.DeleteDevice)
-			device.POST("/:id/control", middleware.RequireRoles("admin", "operator"), deviceHandler.ControlDevice)
+			device.POST("/:id/control", middleware.ControlProtection(), middleware.RequireRoles("admin", "operator"), deviceHandler.ControlDevice)
 		}
 		// EMQX业务接口
 		emqx := api.Group("/emqx")

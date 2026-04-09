@@ -173,8 +173,14 @@ func (s *Subscriber) handleFeedbackMessage(_ mqtt.Client, msg mqtt.Message) {
 		status = 1
 	}
 
-	if err := s.cmdRepo.UpdateByTraceID(payload.TraceID, payload.Result, payload.Message, status); err != nil {
+	updated, err := s.cmdRepo.UpdateByTraceID(payload.TraceID, payload.Result, payload.Message, status)
+	if err != nil {
 		log.Printf("更新命令回执失败 trace_id=%s err=%v", payload.TraceID, err)
+		return
+	}
+
+	if !updated {
+		log.Printf("忽略重复回执 trace_id=%s", payload.TraceID)
 		return
 	}
 

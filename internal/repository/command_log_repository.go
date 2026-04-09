@@ -22,15 +22,19 @@ func (r *CommandLogRepository) Create(log *model.CommandLog) error {
 	return r.DB.Create(log).Error
 }
 
-func (r *CommandLogRepository) UpdateByTraceID(traceID, result, message string, status int) error {
-	return r.DB.Model(&model.CommandLog{}).
+func (r *CommandLogRepository) UpdateByTraceID(traceID, result, message string, status int) (bool, error) {
+	tx := r.DB.Model(&model.CommandLog{}).
 		Where("trace_id = ? AND status = 0", traceID).
 		Updates(map[string]any{
 			"result":  result,
 			"message": message,
 			"status":  status,
 			"done_at": time.Now().Unix(),
-		}).Error
+		})
+	if tx.Error != nil {
+		return false, tx.Error
+	}
+	return tx.RowsAffected > 0, nil
 }
 
 func (r *CommandLogRepository) ListByDeviceID(deviceID string, limit int) ([]model.CommandLog, error) {

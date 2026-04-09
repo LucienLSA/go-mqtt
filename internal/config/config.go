@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"go-mqtt/internal/model"
 	"log"
+	"os"
+	"strings"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -11,7 +14,13 @@ import (
 var DB *gorm.DB
 
 func InitDB() {
-	dsn := "root:123456@tcp(192.168.71.128:3306)/go-mqtt?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=True&loc=Local"
+	dbHost := getEnv("DB_HOST", "192.168.71.128")
+	dbPort := getEnv("DB_PORT", "3306")
+	dbUser := getEnv("DB_USER", "root")
+	dbPassword := getEnv("DB_PASSWORD", "123456")
+	dbName := getEnv("DB_NAME", "go-mqtt")
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=True&loc=Local", dbUser, dbPassword, dbHost, dbPort, dbName)
 
 	var err error
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -30,4 +39,12 @@ func InitDB() {
 	}
 
 	log.Println("数据库初始化成功")
+}
+
+func getEnv(key, fallback string) string {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	return v
 }
